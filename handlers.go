@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -8,25 +9,35 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var authService *AuthServiceClient
+
+func init() {
+	// Создаем клиента для Auth Service
+	authService = NewAuthServiceClient("localhost:4000") // Адрес Auth Service
+}
+
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// Обрабатываем запрос на Auth Service
-	resp, err := http.Post("http://localhost:8081/auth/login", "application/json", r.Body)
-	if err != nil {
-		http.Error(w, "Unable to authenticate", http.StatusInternalServerError)
-		return
+	var credentials struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
-	defer resp.Body.Close()
 
-	// Читаем ответ от Auth Service
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Unable to read response", http.StatusInternalServerError)
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Возвращаем клиенту результат
+	// Вызываем Login через Auth Service
+	resp, err := authService.Login(credentials.Email, credentials.Password)
+	if err != nil {
+		http.Error(w, "Login failed", http.StatusUnauthorized)
+		return
+	}
+
+	// Отправляем JWT токен клиенту
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(body)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func OrdersHandler(w http.ResponseWriter, r *http.Request) {
